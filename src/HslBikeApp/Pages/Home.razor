@@ -1,0 +1,74 @@
+﻿@page "/"
+@inject AppState State
+@implements IDisposable
+
+<PageTitle>HSL City Bikes</PageTitle>
+
+<MapView />
+
+<SearchBar />
+
+<div class="fab-group">
+    <LayerControl />
+    <button class="fab" @onclick="RefreshAsync" disabled="@State.IsLoadingStations"
+            title="Refresh stations" aria-label="Refresh stations">
+        @if (State.IsLoadingStations)
+        {
+            <span>&#8987;</span>
+        }
+        else
+        {
+            <span>&#8635;</span>
+        }
+    </button>
+</div>
+
+@if (State.SelectedStation is not null && !_showDetail)
+{
+    <StationInfoPanel Station="State.SelectedStation"
+                      BikeChange="@GetBikeChange(State.SelectedStation.Id)"
+                      Trend="@State.GetTrend(State.SelectedStation.Id)"
+                      OnClose="OnClosePanel"
+                      OnViewDetail="OnViewDetail" />
+}
+
+@if (_showDetail && State.SelectedStation is not null)
+{
+    <StationDetailPanel Station="State.SelectedStation"
+                        History="State.History"
+                        IsLoadingHistory="State.IsLoadingHistory"
+                        Trend="@State.GetTrend(State.SelectedStation.Id)"
+                        Sparkline="@State.GetSparkline(State.SelectedStation.Id)"
+                        OnBack="OnBackFromDetail" />
+}
+
+@if (State.StationError is not null)
+{
+    <div class="error-toast" role="alert">@State.StationError</div>
+}
+
+@code {
+    private bool _showDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnStateChanged += StateHasChanged;
+        await State.InitAsync();
+    }
+
+    private int GetBikeChange(string stationId) =>
+        State.BikeChanges.TryGetValue(stationId, out var change) ? change : 0;
+
+    private async Task RefreshAsync() => await State.RefreshNowAsync();
+
+    private void OnClosePanel()
+    {
+        State.ClearSelection();
+        _showDetail = false;
+    }
+
+    private void OnViewDetail() => _showDetail = true;
+    private void OnBackFromDetail() => _showDetail = false;
+
+    public void Dispose() => State.OnStateChanged -= StateHasChanged;
+}

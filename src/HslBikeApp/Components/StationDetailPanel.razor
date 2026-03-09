@@ -1,0 +1,122 @@
+<div class="detail-panel">
+    <button class="back-btn" @onclick="OnBack">&#8592; Back to map</button>
+
+    <h2>@Station.Name</h2>
+    <div class="meta">@Station.Address</div>
+
+    <!-- Availability card -->
+    <div class="detail-card">
+        <h4>Availability</h4>
+        <div class="chips">
+            @if (!Station.IsActive)
+            {
+                <span class="chip offline">Offline</span>
+            }
+            else
+            {
+                <span class="chip @(Station.BikesAvailable == 0 ? "empty" : "bikes")">
+                    &#128690; @Station.BikesAvailable bikes
+                </span>
+                <span class="chip @(Station.SpacesAvailable == 0 ? "empty" : "spaces")">
+                    P @Station.SpacesAvailable spaces
+                </span>
+                <span class="chip capacity">&#9878; @Station.Capacity total</span>
+            }
+        </div>
+
+        <div class="trend @GetTrendClass()">@GetTrendText()</div>
+
+        @if (Sparkline.Count > 1)
+        {
+            <svg class="sparkline" width="200" height="40" viewBox="0 0 200 40" aria-label="Bike availability trend">
+                <polyline points="@GetSparklinePoints()" />
+            </svg>
+        }
+    </div>
+
+    <!-- Metadata card -->
+    <div class="detail-card">
+        <h4>Station Info</h4>
+        <div><strong>Station ID:</strong> @Station.Id</div>
+        <div><strong>Status:</strong> @(Station.IsActive ? "Active" : "Offline")</div>
+        @if (Station.LastUpdated.HasValue)
+        {
+            <div><strong>Last updated:</strong> @Station.LastUpdated.Value.ToLocalTime().ToString("HH:mm")</div>
+        }
+    </div>
+
+    <!-- Popular destinations -->
+    <div class="detail-card">
+        <h4>Popular Destinations</h4>
+        @if (IsLoadingHistory)
+        {
+            <div class="loading-spinner" style="width:24px;height:24px;border-width:3px;margin:12px auto;"></div>
+        }
+        else if (History.Count == 0)
+        {
+            <div style="color:var(--text-secondary);font-size:13px;">No trip history available yet.</div>
+        }
+        else
+        {
+            <ul class="destination-list">
+                @foreach (var h in History.Take(10))
+                {
+                    <li class="destination-item">
+                        <div class="destination-icon">&#128205;</div>
+                        <div class="destination-info">
+                            <div class="destination-name">@h.ArrivalStationName</div>
+                            <div class="destination-meta">
+                                @h.TripCount trips &middot; avg @h.AverageDurationFormatted
+                                @if (h.AverageDistanceMetres > 0)
+                                {
+                                    <text> &middot; @((h.AverageDistanceMetres / 1000.0).ToString("0.1")) km</text>
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public required BikeStation Station { get; set; }
+    [Parameter] public List<StationHistory> History { get; set; } = [];
+    [Parameter] public bool IsLoadingHistory { get; set; }
+    [Parameter] public AvailabilityTrend Trend { get; set; }
+    [Parameter] public List<int> Sparkline { get; set; } = [];
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private string GetTrendClass() => Trend switch
+    {
+        AvailabilityTrend.RapidDecrease => "rapid-decrease",
+        AvailabilityTrend.Decreasing => "decreasing",
+        AvailabilityTrend.Increasing => "increasing",
+        AvailabilityTrend.RapidIncrease => "rapid-increase",
+        _ => "stable"
+    };
+
+    private string GetTrendText() => Trend switch
+    {
+        AvailabilityTrend.RapidDecrease => "\u2193\u2193 Bikes decreasing rapidly",
+        AvailabilityTrend.Decreasing => "\u2193 Bikes decreasing",
+        AvailabilityTrend.Increasing => "\u2191 Bikes increasing",
+        AvailabilityTrend.RapidIncrease => "\u2191\u2191 Bikes increasing rapidly",
+        _ => "Stable"
+    };
+
+    private string GetSparklinePoints()
+    {
+        if (Sparkline.Count < 2) return "";
+        var max = Sparkline.Max();
+        if (max == 0) max = 1;
+        var width = 200.0;
+        var height = 36.0;
+        var step = width / (Sparkline.Count - 1);
+
+        return string.Join(" ", Sparkline.Select((v, i) =>
+            $"{(i * step).ToString("0.1", System.Globalization.CultureInfo.InvariantCulture)},{(height - (double)v / max * height).ToString("0.1", System.Globalization.CultureInfo.InvariantCulture)}"
+        ));
+    }
+}

@@ -1,0 +1,25 @@
+@inject AppState State
+
+<div class="search-bar">
+    <input type="text"
+           placeholder="Search stations..."
+           value="@State.SearchQuery"
+           @oninput="OnInput"
+           aria-label="Search stations by name or address" />
+    @if (!string.IsNullOrEmpty(State.SearchQuery))
+    {
+        <button class="fab" @onclick="Clear" title="Clear search" aria-label="Clear search">&#10005;</button>
+    }
+</div>
+
+@code {
+    private void OnInput(ChangeEventArgs e)
+    {
+        State.SetSearchQuery(e.Value?.ToString() ?? "");
+    }
+
+    private void Clear()
+    {
+        State.SetSearchQuery("");
+    }
+}

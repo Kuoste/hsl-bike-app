@@ -1,0 +1,106 @@
+@inject AppState State
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div id="map-container"></div>
+
+@code {
+    private DotNetObjectReference<MapView>? _dotNetRef;
+    private bool _mapInitialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("MapInterop.initMap", "map-container", 60.1699, 24.9384, 13, _dotNetRef);
+            _mapInitialized = true;
+            State.OnStateChanged += OnStateChanged;
+            await UpdateMapAsync();
+        }
+    }
+
+    private async void OnStateChanged()
+    {
+        await InvokeAsync(async () => await UpdateMapAsync());
+    }
+
+    private async Task UpdateMapAsync()
+    {
+        if (!_mapInitialized) return;
+
+        var selectedId = State.SelectedStation?.Id;
+        await JS.InvokeVoidAsync("MapInterop.setMarkerSelected", selectedId);
+
+        var markers = State.FilteredStations.Select(s =>
+        {
+            var trend = State.GetTrend(s.Id);
+            State.BikeChanges.TryGetValue(s.Id, out var change);
+            var badge = GetBadgeText(change, trend);
+
+            return new
+            {
+                id = s.Id,
+                lat = s.Latitude,
+                lon = s.Longitude,
+                name = s.Name,
+                bikes = s.BikesAvailable,
+                spaces = s.SpacesAvailable,
+                color = GetMarkerColor(s),
+                badge
+            };
+        }).ToList();
+
+        await JS.InvokeVoidAsync("MapInterop.updateMarkers",
+            System.Text.Json.JsonSerializer.Serialize(markers));
+
+        // Cycle lanes
+        if (State.ShowCycleLanes && State.CycleLanes.Count > 0)
+        {
+            var lines = State.CycleLanes.Select(l => new { coords = l.Coordinates }).ToList();
+            await JS.InvokeVoidAsync("MapInterop.updatePolylines",
+                System.Text.Json.JsonSerializer.Serialize(lines));
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("MapInterop.clearPolylines");
+        }
+    }
+
+    private static string GetMarkerColor(BikeStation s)
+    {
+        if (!s.IsActive) return "#9e9e9e";        // grey
+        if (s.BikesAvailable == 0) return "#d32f2f"; // red
+        if (s.BikesAvailable <= 3) return "#f57c00";  // orange
+        return "#388e3c";                             // green
+    }
+
+    private static string GetBadgeText(int change, AvailabilityTrend trend)
+    {
+        var parts = new List<string>();
+        if (change > 0) parts.Add($"\u2191{change}");
+        else if (change < 0) parts.Add($"\u2193{Math.Abs(change)}");
+
+        if (trend == AvailabilityTrend.RapidDecrease) parts.Add("\u2193\u2193");
+        else if (trend == AvailabilityTrend.RapidIncrease) parts.Add("\u2191\u2191");
+
+        return string.Join(" ", parts);
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerClicked(string stationId)
+    {
+        var station = State.Stations.FirstOrDefault(s => s.Id == stationId);
+        if (station is not null)
+            await State.SelectStationAsync(station);
+    }
+
+    [JSInvokable]
+    public void OnMapClicked() => State.ClearSelection();
+
+    public async ValueTask DisposeAsync()
+    {
+        State.OnStateChanged -= OnStateChanged;
+        _dotNetRef?.Dispose();
+    }
+}

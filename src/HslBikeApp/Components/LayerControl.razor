@@ -1,0 +1,20 @@
+@inject AppState State
+
+<button class="fab @(State.ShowCycleLanes ? "active" : "")"
+        @onclick="ToggleAsync"
+        disabled="@State.IsLoadingCycleLanes"
+        title="Toggle cycle lanes"
+        aria-label="Toggle cycle lanes">
+    @if (State.IsLoadingCycleLanes)
+    {
+        <span class="loading-spinner" style="width:18px;height:18px;border-width:2px;"></span>
+    }
+    else
+    {
+        <span>&#128690;</span>
+    }
+</button>
+
+@code {
+    private async Task ToggleAsync() => await State.ToggleCycleLanesAsync();
+}
