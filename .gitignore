@@ -25,6 +25,9 @@ bld/
 # Rider
 .idea/
 
+# Local Blazor WASM config overrides
+src/HslBikeApp/wwwroot/appsettings.Development.json
+
 # dotnet tool
 .config/
 

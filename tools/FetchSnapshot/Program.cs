@@ -1,13 +1,22 @@
 ﻿using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 // FetchSnapshot: Called by GitHub Actions every 5 minutes.
-// Fetches GBFS station status, appends a snapshot to data/snapshots.json,
+// Fetches bike station status via GraphQL, appends a snapshot to data/snapshots.json,
 // and trims to the last 30 entries (~2.5 hours).
 
 const int MaxSnapshots = 30;
-const string StationStatusUrl = "https://api.digitransit.fi/routing/v2/hsl/bike-rental/gbfs/v2/station_status";
+const string GraphQlUrl = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
+const string Query = """
+    {
+      vehicleRentalStations {
+        stationId
+        availableVehicles { byType { count } }
+      }
+    }
+    """;
 
 var apiKey = Environment.GetEnvironmentVariable("DIGITRANSIT_SUBSCRIPTION_KEY");
 if (string.IsNullOrEmpty(apiKey))
@@ -32,11 +41,13 @@ using var http = new HttpClient();
 http.DefaultRequestHeaders.Add("digitransit-subscription-key", apiKey);
 
 Console.WriteLine("Fetching station status...");
-var response = await http.GetAsync(StationStatusUrl);
+var payload = JsonSerializer.Serialize(new { query = Query });
+var content = new StringContent(payload, Encoding.UTF8, "application/json");
+var response = await http.PostAsync(GraphQlUrl, content);
 response.EnsureSuccessStatusCode();
 
-var statusDoc = await response.Content.ReadFromJsonAsync<JsonDocument>();
-var stations = statusDoc?.RootElement.GetProperty("data").GetProperty("stations");
+var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
+var stations = doc?.RootElement.GetProperty("data").GetProperty("vehicleRentalStations");
 
 if (stations is null)
 {
@@ -47,8 +58,17 @@ if (stations is null)
 var bikeCounts = new Dictionary<string, int>();
 foreach (var station in stations.Value.EnumerateArray())
 {
-    var stationId = station.GetProperty("station_id").GetString() ?? "";
-    var bikes = station.GetProperty("num_bikes_available").GetInt32();
+    var stationId = station.GetProperty("stationId").GetString() ?? "";
+    var bikes = 0;
+    if (station.TryGetProperty("availableVehicles", out var av)
+        && av.TryGetProperty("byType", out var byType))
+    {
+        foreach (var entry in byType.EnumerateArray())
+        {
+            if (entry.TryGetProperty("count", out var c))
+                bikes += c.GetInt32();
+        }
+    }
     bikeCounts[stationId] = bikes;
 }
 

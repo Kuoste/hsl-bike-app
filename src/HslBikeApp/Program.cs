@@ -12,7 +12,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 var config = builder.Configuration;
 var apiKey = config["DigitransitSubscriptionKey"] ?? "";
 var aggregatorBaseUrl = config["AggregatorBaseUrl"] ?? "https://kuoste.github.io/hsl-bike-data-aggregator";
-var snapshotUrl = config["SnapshotUrl"] ?? $"{builder.HostEnvironment.BaseAddress}data/snapshots.json";
+var snapshotUrl = config["SnapshotUrl"];
+if (string.IsNullOrEmpty(snapshotUrl))
+    snapshotUrl = $"{builder.HostEnvironment.BaseAddress}data/snapshots.json";
 
 // HttpClient with Digitransit API key
 var digitransitHttp = new HttpClient();

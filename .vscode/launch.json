@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch HslBikeApp",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "run HslBikeApp",
+      "url": "http://localhost:5291",
+      "webRoot": "${workspaceFolder}/src/HslBikeApp/wwwroot",
+      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+      "timeout": 60000
+    },
+    {
+      "name": "Launch HslBikeApp (watch)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "watch HslBikeApp",
+      "url": "http://localhost:5291",
+      "webRoot": "${workspaceFolder}/src/HslBikeApp/wwwroot",
+      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+      "timeout": 60000
+    }
+  ]
+}

@@ -18,6 +18,7 @@ public class AppState : IDisposable
     public List<BikeStation> Stations { get; private set; } = [];
     public bool IsLoadingStations { get; private set; }
     public string? StationError { get; private set; }
+    public string? StationStatusMessage { get; private set; }
 
     // --------------- search / filter ---------------
     public string SearchQuery { get; private set; } = "";
@@ -83,12 +84,18 @@ public class AppState : IDisposable
     {
         IsLoadingStations = true;
         StationError = null;
+        StationStatusMessage = null;
         NotifyStateChanged();
 
         try
         {
             var previous = Stations.ToDictionary(s => s.Id, s => s.BikesAvailable);
             Stations = await _stationService.FetchStationsAsync();
+
+            if (Stations.Count == 0)
+            {
+                StationStatusMessage = "No active HSL city bike stations are currently published. This usually means the bike season has not started yet or the upstream feed is temporarily empty.";
+            }
 
             // Compute bike count deltas
             if (previous.Count > 0)
@@ -113,7 +120,7 @@ public class AppState : IDisposable
         }
         catch (Exception ex)
         {
-            StationError = ex.Message;
+            StationError = $"Could not load live bike stations from Digitransit. {ex.Message}";
         }
         finally
         {

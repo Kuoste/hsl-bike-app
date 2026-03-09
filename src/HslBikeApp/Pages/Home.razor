@@ -47,6 +47,11 @@
     <div class="error-toast" role="alert">@State.StationError</div>
 }
 
+@if (State.StationError is null && State.StationStatusMessage is not null)
+{
+    <div class="status-toast" role="status">@State.StationStatusMessage</div>
+}
+
 @code {
     private bool _showDetail;
 

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using HslBikeApp.Models;
 
@@ -6,10 +7,24 @@ namespace HslBikeApp.Services;
 
 public class StationService
 {
-    private const string StationInfoUrl =
-        "https://api.digitransit.fi/routing/v2/hsl/bike-rental/gbfs/v2/station_information";
-    private const string StationStatusUrl =
-        "https://api.digitransit.fi/routing/v2/hsl/bike-rental/gbfs/v2/station_status";
+    private const string GraphQlUrl =
+        "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
+
+    private const string Query = """
+        {
+          vehicleRentalStations {
+            stationId
+            name
+            lat
+            lon
+            allowPickup
+            allowDropoff
+            capacity
+            availableVehicles { byType { count } }
+            availableSpaces   { byType { count } }
+          }
+        }
+        """;
 
     private readonly HttpClient _http;
 
@@ -20,53 +35,52 @@ public class StationService
 
     public async Task<List<BikeStation>> FetchStationsAsync()
     {
-        var infoTask = _http.GetFromJsonAsync<JsonDocument>(StationInfoUrl);
-        var statusTask = _http.GetFromJsonAsync<JsonDocument>(StationStatusUrl);
+        var payload = JsonSerializer.Serialize(new { query = Query });
+        var content = new StringContent(payload, Encoding.UTF8, "application/json");
 
-        await Task.WhenAll(infoTask, statusTask);
+        var response = await _http.PostAsync(GraphQlUrl, content);
+        response.EnsureSuccessStatusCode();
 
-        var infoDoc = await infoTask ?? throw new InvalidOperationException("No station info response");
-        var statusDoc = await statusTask ?? throw new InvalidOperationException("No station status response");
+        var doc = await response.Content.ReadFromJsonAsync<JsonDocument>()
+            ?? throw new InvalidOperationException("No GraphQL response");
 
-        var infoStations = infoDoc.RootElement.GetProperty("data").GetProperty("stations");
-        var statusStations = statusDoc.RootElement.GetProperty("data").GetProperty("stations");
-
-        // Build lookup: stationId -> status
-        var statusMap = new Dictionary<string, JsonElement>();
-        foreach (var s in statusStations.EnumerateArray())
-        {
-            var id = s.GetProperty("station_id").GetString() ?? "";
-            statusMap[id] = s;
-        }
+        var rentalStations = doc.RootElement
+            .GetProperty("data")
+            .GetProperty("vehicleRentalStations");
 
         var stations = new List<BikeStation>();
-        foreach (var info in infoStations.EnumerateArray())
+        foreach (var s in rentalStations.EnumerateArray())
         {
-            var id = info.GetProperty("station_id").GetString() ?? "";
-            statusMap.TryGetValue(id, out var status);
+            var bikesAvailable = SumByType(s, "availableVehicles");
+            var spacesAvailable = SumByType(s, "availableSpaces");
 
             stations.Add(new BikeStation
             {
-                Id = id,
-                Name = info.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
-                Address = info.TryGetProperty("address", out var a) ? a.GetString() ?? "" : "",
-                Latitude = info.GetProperty("lat").GetDouble(),
-                Longitude = info.GetProperty("lon").GetDouble(),
-                Capacity = info.TryGetProperty("capacity", out var c) ? c.GetInt32() : 0,
-                BikesAvailable = status.ValueKind != JsonValueKind.Undefined
-                    && status.TryGetProperty("num_bikes_available", out var b) ? b.GetInt32() : 0,
-                SpacesAvailable = status.ValueKind != JsonValueKind.Undefined
-                    && status.TryGetProperty("num_docks_available", out var d) ? d.GetInt32() : 0,
-                IsActive = status.ValueKind != JsonValueKind.Undefined
-                    && status.TryGetProperty("is_renting", out var r) && r.GetBoolean(),
-                LastUpdated = status.ValueKind != JsonValueKind.Undefined
-                    && status.TryGetProperty("last_reported", out var lr)
-                    && lr.ValueKind == JsonValueKind.Number
-                        ? DateTimeOffset.FromUnixTimeSeconds(lr.GetInt64()).UtcDateTime
-                        : null
+                Id = s.GetProperty("stationId").GetString() ?? "",
+                Name = s.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                Address = "",
+                Latitude = s.GetProperty("lat").GetDouble(),
+                Longitude = s.GetProperty("lon").GetDouble(),
+                Capacity = s.TryGetProperty("capacity", out var cap) ? cap.GetInt32() : 0,
+                BikesAvailable = bikesAvailable,
+                SpacesAvailable = spacesAvailable,
+                IsActive = s.TryGetProperty("allowPickup", out var ap) && ap.GetBoolean(),
             });
         }
 
         return stations;
+    }
+
+    private static int SumByType(JsonElement station, string property)
+    {
+        if (!station.TryGetProperty(property, out var outer)) return 0;
+        if (!outer.TryGetProperty("byType", out var byType)) return 0;
+        var total = 0;
+        foreach (var entry in byType.EnumerateArray())
+        {
+            if (entry.TryGetProperty("count", out var c))
+                total += c.GetInt32();
+        }
+        return total;
     }
 }

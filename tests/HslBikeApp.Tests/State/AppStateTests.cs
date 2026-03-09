@@ -1,8 +1,6 @@
 using HslBikeApp.Models;
 using HslBikeApp.Services;
 using HslBikeApp.State;
-using Moq;
-using Moq.Protected;
 using System.Net;
 using System.Text.Json;
 
@@ -14,41 +12,40 @@ public class AppStateTests
         List<BikeStation>? stations = null,
         List<StationSnapshot>? snapshots = null)
     {
-        // Mock StationService via a mock HttpClient
         var stationHandler = new MockHttpHandler();
         if (stations is not null)
         {
-            var infoJson = JsonSerializer.Serialize(new
+            var stationJson = JsonSerializer.Serialize(new
             {
                 data = new
                 {
-                    stations = stations.Select(s => new
+                    vehicleRentalStations = stations.Select(s => new
                     {
-                        station_id = s.Id,
+                        stationId = s.Id,
                         name = s.Name,
-                        address = s.Address,
                         lat = s.Latitude,
                         lon = s.Longitude,
-                        capacity = s.Capacity
+                        capacity = s.Capacity,
+                        allowPickup = s.IsActive,
+                        allowDropoff = true,
+                        availableVehicles = new
+                        {
+                            byType = new[]
+                            {
+                                new { count = s.BikesAvailable }
+                            }
+                        },
+                        availableSpaces = new
+                        {
+                            byType = new[]
+                            {
+                                new { count = s.SpacesAvailable }
+                            }
+                        }
                     })
                 }
             });
-            var statusJson = JsonSerializer.Serialize(new
-            {
-                data = new
-                {
-                    stations = stations.Select(s => new
-                    {
-                        station_id = s.Id,
-                        num_bikes_available = s.BikesAvailable,
-                        num_docks_available = s.SpacesAvailable,
-                        is_renting = s.IsActive,
-                        last_reported = (int)(new DateTimeOffset(s.LastUpdated ?? DateTime.UtcNow).ToUnixTimeSeconds())
-                    })
-                }
-            });
-            stationHandler.SetResponse("station_information", infoJson);
-            stationHandler.SetResponse("station_status", statusJson);
+            stationHandler.SetResponse("gtfs/v1", stationJson);
         }
 
         var stationService = new StationService(new HttpClient(stationHandler) { BaseAddress = new Uri("https://test.local/") });
@@ -184,6 +181,46 @@ public class AppStateTests
 
         state.SetSearchQuery("test");
         Assert.True(raised);
+    }
+
+    [Fact]
+    public async Task LoadStationsAsync_PopulatesStations_FromGraphQlResponse()
+    {
+        var stations = new List<BikeStation>
+        {
+            new()
+            {
+                Id = "001",
+                Name = "Kaivopuisto",
+                Latitude = 60.15,
+                Longitude = 24.95,
+                Capacity = 20,
+                BikesAvailable = 7,
+                SpacesAvailable = 13,
+                IsActive = true
+            }
+        };
+
+        var state = CreateAppState(stations: stations);
+
+        await state.LoadStationsAsync();
+
+        Assert.Single(state.Stations);
+        Assert.Null(state.StationError);
+        Assert.Null(state.StationStatusMessage);
+        Assert.Equal("Kaivopuisto", state.Stations[0].Name);
+    }
+
+    [Fact]
+    public async Task LoadStationsAsync_EmptyFeed_SetsStatusMessage()
+    {
+        var state = CreateAppState(stations: []);
+
+        await state.LoadStationsAsync();
+
+        Assert.Empty(state.Stations);
+        Assert.Null(state.StationError);
+        Assert.NotNull(state.StationStatusMessage);
     }
 
     /// Simple HttpMessageHandler mock for tests

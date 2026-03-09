@@ -26,18 +26,24 @@ A Blazor WebAssembly app showing real-time Helsinki city bike station availabili
 ## Setup
 
 1. Clone the repo
-2. Set your Digitransit subscription key in `src/HslBikeApp/wwwroot/appsettings.json`:
+2. For local development, create `src/HslBikeApp/wwwroot/appsettings.Development.json` and set your Digitransit subscription key there:
    ```json
    { "DigitransitSubscriptionKey": "your-key-here" }
    ```
+   `appsettings.Development.json` is gitignored and overrides values from `appsettings.json` when running locally with the `Development` environment.
 3. Run locally:
    ```bash
    dotnet run --project src/HslBikeApp
    ```
+   In VS Code, the default debug profile now uses a plain run-once launch. Use the separate watch profile only when you want hot reload.
 4. Run tests:
    ```bash
    dotnet test
    ```
+
+## Seasonal behavior
+
+HSL city bikes are seasonal. Outside the operating season, the upstream live station feed can legitimately return zero active stations. When that happens, the app now shows an explicit status message instead of leaving the map blank without explanation.
 
 ## API Key
 
