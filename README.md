@@ -2,7 +2,7 @@
 
 A Blazor WebAssembly app showing real-time Helsinki city bike station availability, trend tracking, cycle lane overlay, and historical trip data.
 
-**Live:** https://tmikuoste.github.io/HslBikeApp/
+**Live:** https://kuoste.github.io/HslBikeApp/
 
 ## Features
 
